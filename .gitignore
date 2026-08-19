@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.py[cod]
+.env
+*.wav
+huggingface/
+.cache/
+voices/*
+!voices/.gitkeep
+.pytest_cache/
+.idea/
+.vscode/

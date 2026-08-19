@@ -1,0 +1,259 @@
+openapi: 3.1.0
+info:
+  title: Klarvid VoxCPM TTS
+  version: 0.1.0
+  description: |
+    Local text-to-speech API (VoxCPM2). Not OpenAI-compatible.
+    Success synthesis responses are raw audio/wav bytes (PCM16 mono 48 kHz).
+    One GPU lock: concurrent callers wait or receive 503 after GPU_LOCK_TIMEOUT.
+  contact:
+    name: Klarvid
+servers:
+  - url: http://127.0.0.1:8000
+    description: Default Windows bind
+tags:
+  - name: system
+  - name: tts
+  - name: clone
+paths:
+  /health:
+    get:
+      tags: [system]
+      operationId: getHealth
+      summary: GPU and model status
+      responses:
+        "200":
+          description: Server is up (may still be busy synthesizing)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+  /v1/tts:
+    post:
+      tags: [tts]
+      operationId: postTts
+      summary: Synthesize speech (complete WAV)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TtsRequest"
+            examples:
+              vi:
+                value:
+                  text: Xin chào, Klarvid.
+              voice_design:
+                value:
+                  text: "(giọng nữ trẻ, ấm)Xin chào, chào mừng bạn."
+                  cfg_value: 2.0
+                  inference_timesteps: 10
+                  seed: 42
+      responses:
+        "200":
+          description: WAV audio
+          content:
+            audio/wav:
+              schema:
+                type: string
+                format: binary
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "503":
+          $ref: "#/components/responses/GpuBusy"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /v1/tts/stream:
+    post:
+      tags: [tts]
+      operationId: postTtsStream
+      summary: Synthesize speech (chunked WAV)
+      description: |
+        First chunk is a WAV header with unknown sizes (0xFFFFFFFF), then PCM16 frames.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TtsRequest"
+      responses:
+        "200":
+          description: Chunked audio/wav
+          content:
+            audio/wav:
+              schema:
+                type: string
+                format: binary
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "503":
+          $ref: "#/components/responses/GpuBusy"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /v1/clone:
+    post:
+      tags: [clone]
+      operationId: postClone
+      summary: Clone voice from reference audio (complete WAV)
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/CloneForm"
+      responses:
+        "200":
+          description: WAV audio
+          content:
+            audio/wav:
+              schema:
+                type: string
+                format: binary
+        "400":
+          description: Empty text
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "503":
+          $ref: "#/components/responses/GpuBusy"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /v1/clone/stream:
+    post:
+      tags: [clone]
+      operationId: postCloneStream
+      summary: Clone voice (chunked WAV)
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/CloneForm"
+      responses:
+        "200":
+          description: Chunked audio/wav
+          content:
+            audio/wav:
+              schema:
+                type: string
+                format: binary
+        "400":
+          description: Empty text
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "503":
+          $ref: "#/components/responses/GpuBusy"
+        "500":
+          $ref: "#/components/responses/ServerError"
+components:
+  schemas:
+    TtsRequest:
+      type: object
+      required: [text]
+      additionalProperties: false
+      properties:
+        text:
+          type: string
+          minLength: 1
+          description: >
+            Text to speak. Optional voice design prefix `(description)rest of text`.
+        cfg_value:
+          type: number
+          default: 2.0
+        inference_timesteps:
+          type: integer
+          default: 10
+        seed:
+          type: integer
+          nullable: true
+    CloneForm:
+      type: object
+      required: [text, reference_audio]
+      properties:
+        text:
+          type: string
+        reference_audio:
+          type: string
+          format: binary
+          description: 3–10s speaker clip (wav/mp3)
+        prompt_text:
+          type: string
+          description: Exact transcript of reference_audio for higher similarity
+        denoise:
+          type: boolean
+          default: false
+        cfg_value:
+          type: number
+        inference_timesteps:
+          type: integer
+        seed:
+          type: integer
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - busy
+        - queue_waiters
+        - sample_rate
+        - model
+      properties:
+        status:
+          type: string
+          enum: [ok, busy]
+        gpu:
+          type: string
+          nullable: true
+        vram_allocated_gb:
+          type: number
+        vram_reserved_gb:
+          type: number
+        busy:
+          type: boolean
+        queue_waiters:
+          type: integer
+        optimize:
+          type: boolean
+        load_denoiser:
+          type: boolean
+        model:
+          type: string
+        device:
+          type: string
+        sample_rate:
+          type: integer
+          example: 48000
+    ErrorDetail:
+      type: object
+      properties:
+        detail:
+          type: string
+          example: GPU bận, thử lại sau.
+  responses:
+    GpuBusy:
+      description: GPU lock wait exceeded GPU_LOCK_TIMEOUT
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorDetail"
+          example:
+            detail: GPU bận, thử lại sau.
+    ServerError:
+      description: Inference failure or CUDA OOM
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorDetail"
+    ValidationError:
+      description: Request body failed schema validation
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              detail:
+                type: array
+                items:
+                  type: object
