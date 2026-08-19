@@ -11,9 +11,11 @@ from fastapi.responses import Response, StreamingResponse
 from app.audio import float_to_pcm16, pcm16_to_wav_bytes, wav_header_unknown_size
 from app.config import settings
 from app.engine import GPUBusyError, TtsEngine
-from app.schemas import HealthResponse, TtsRequest
+from app.schemas import HealthResponse, TtsRequest, VoiceListResponse, VoiceResponse
+from app.voices import InvalidVoiceId, VoiceNotFound, VoiceStore
 
 engine = TtsEngine(settings)
+store = VoiceStore(Path(settings.voices_dir))
 
 
 @asynccontextmanager
@@ -34,8 +36,28 @@ app = FastAPI(
 )
 
 
+def _require_voice(voice_id: str):
+    try:
+        return store.get(voice_id)
+    except InvalidVoiceId as exc:
+        raise HTTPException(status_code=400, detail="voice_id không hợp lệ") from exc
+    except VoiceNotFound as exc:
+        raise HTTPException(status_code=404, detail="voice_id không tồn tại") from exc
+
+
 def _busy_http() -> HTTPException:
     return HTTPException(status_code=503, detail="GPU bận, thử lại sau.")
+
+
+def _voice_kwargs(voice_id: str | None) -> dict:
+    if not voice_id:
+        return {}
+    voice = _require_voice(voice_id)
+    return {
+        "reference_wav_path": voice.audio_path,
+        "prompt_wav_path": voice.audio_path,
+        "prompt_text": voice.prompt_text,
+    }
 
 
 @app.get("/health", response_model=HealthResponse, tags=["system"])
@@ -60,9 +82,14 @@ async def health():
     "/v1/tts",
     tags=["tts"],
     response_class=Response,
-    responses={200: {"content": {"audio/wav": {}}}, 503: {"description": "GPU busy"}},
+    responses={
+        200: {"content": {"audio/wav": {}}},
+        404: {"description": "Unknown voice_id"},
+        503: {"description": "GPU busy"},
+    },
 )
 async def tts(body: TtsRequest):
+    voice_kw = _voice_kwargs(body.voice_id)
     try:
         async with engine.gpu_slot():
             wav = await engine.generate(
@@ -70,9 +97,12 @@ async def tts(body: TtsRequest):
                 cfg_value=body.cfg_value,
                 inference_timesteps=body.inference_timesteps,
                 seed=body.seed,
+                **voice_kw,
             )
     except GPUBusyError:
         raise _busy_http() from None
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     return Response(
@@ -86,9 +116,15 @@ async def tts(body: TtsRequest):
     "/v1/tts/stream",
     tags=["tts"],
     response_class=StreamingResponse,
-    responses={200: {"content": {"audio/wav": {}}}, 503: {"description": "GPU busy"}},
+    responses={
+        200: {"content": {"audio/wav": {}}},
+        404: {"description": "Unknown voice_id"},
+        503: {"description": "GPU busy"},
+    },
 )
 async def tts_stream(body: TtsRequest):
+    voice_kw = _voice_kwargs(body.voice_id)
+
     async def chunks():
         try:
             async with engine.gpu_slot():
@@ -98,6 +134,7 @@ async def tts_stream(body: TtsRequest):
                     cfg_value=body.cfg_value,
                     inference_timesteps=body.inference_timesteps,
                     seed=body.seed,
+                    **voice_kw,
                 ):
                     yield pcm
         except GPUBusyError:
@@ -106,11 +143,47 @@ async def tts_stream(body: TtsRequest):
     return StreamingResponse(chunks(), media_type="audio/wav")
 
 
+@app.post("/v1/voices", response_model=VoiceResponse, tags=["voices"], status_code=201)
+async def create_voice(
+    prompt_text: str = Form(..., description="Transcript đúng của file audio mẫu"),
+    reference_audio: UploadFile = File(...),
+    name: str | None = Form(None),
+):
+    if not prompt_text.strip():
+        raise HTTPException(status_code=400, detail="prompt_text rỗng")
+    data = await reference_audio.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="reference_audio rỗng")
+    suffix = Path(reference_audio.filename or "ref.wav").suffix or ".wav"
+    voice = store.create(
+        prompt_text=prompt_text.strip(),
+        audio=data,
+        suffix=suffix,
+        name=(name.strip() if name and name.strip() else None),
+    )
+    return voice.public()
+
+
+@app.get("/v1/voices", response_model=VoiceListResponse, tags=["voices"])
+async def list_voices():
+    return {"voices": [v.public() for v in store.list()]}
+
+
+@app.get("/v1/voices/{voice_id}", response_model=VoiceResponse, tags=["voices"])
+async def get_voice(voice_id: str):
+    return _require_voice(voice_id).public()
+
+
+@app.delete("/v1/voices/{voice_id}", tags=["voices"])
+async def delete_voice(voice_id: str):
+    _require_voice(voice_id)
+    store.delete(voice_id)
+    return {"ok": True, "id": voice_id}
+
+
 async def _save_upload(upload: UploadFile) -> str:
-    voices = Path("voices")
-    voices.mkdir(exist_ok=True)
     suffix = Path(upload.filename or "ref.wav").suffix or ".wav"
-    fd, path = tempfile.mkstemp(prefix="voxcpm_ref_", suffix=suffix, dir=str(voices))
+    fd, path = tempfile.mkstemp(prefix="voxcpm_ref_", suffix=suffix)
     os.close(fd)
     data = await upload.read()
     Path(path).write_bytes(data)

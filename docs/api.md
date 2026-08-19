@@ -8,12 +8,14 @@ This document is the contract for clients and coding agents. Follow it exactly. 
 
 1. Base URL default: `http://127.0.0.1:8000`. No auth, no API key.
 2. One GPU: at most one synthesis runs at a time. If busy, wait then retry on **503**.
-3. Success bodies are **raw WAV bytes**, not JSON, not base64 (except `/health`).
+3. TTS/clone success bodies are **raw WAV bytes**, not JSON, not base64. `/health` and `/v1/voices*` are JSON.
 4. Audio: **PCM16 little-endian, mono, 48 kHz** (`sample_rate` from `/health` if unsure).
 5. Voice design is **not** a separate field. Put the description in parentheses at the start of `text`.
 6. Do not send parallel TTS requests from the same pipeline unless you handle 503 + retry.
 7. Text longer than ~400 characters is split on sentence boundaries server-side; keep scripts under a few sentences per request when possible.
-8. Clone needs a short reference clip (**3–10 seconds**). Denoise defaults to off; do not set `denoise=true` on an 8 GB GPU unless the operator enabled the denoiser.
+8. Saved voices: `POST /v1/voices` with sample audio **and** the exact transcript (`prompt_text`). Later TTS uses only `voice_id` — do not re-upload the clip.
+9. One-shot clone (`POST /v1/clone`) still requires the file every time. Prefer `/v1/voices` + `voice_id` for reuse.
+10. Clone/register clips should be **3–10 seconds**. Do not set `denoise=true` on an 8 GB GPU unless the operator enabled the denoiser.
 
 ## Concurrency
 
@@ -22,6 +24,7 @@ This document is the contract for clients and coding agents. Follow it exactly. 
 | GPU free | 200 + WAV | Save or play the body |
 | GPU busy > `GPU_LOCK_TIMEOUT` (default 180s) | 503 | Retry with backoff (5–15s), max 3–5 times |
 | Bad request | 400 / 422 | Fix payload; do not retry blindly |
+| Unknown `voice_id` | 404 | Create the voice first or list `GET /v1/voices` |
 | Server/OOM | 500 | Surface the `detail` string; do not hammer |
 
 `GET /health` fields: `busy` (bool), `queue_waiters` (int). If `busy` is true, delay before calling TTS.
@@ -50,6 +53,47 @@ JSON. Use before a batch and to read `sample_rate`.
 
 `status` is `"ok"` or `"busy"` (same information as `busy`).
 
+### Saved voices (register once, reuse by id)
+
+Does **not** use the GPU. Files live under `voices/{id}/` and survive server restart.
+
+#### `POST /v1/voices` → 201 JSON
+
+`multipart/form-data`
+
+| Field | Type | Required | Notes |
+|-------|------|----------|--------|
+| `reference_audio` | file | yes | 3–10s sample (wav/mp3/flac/ogg) |
+| `prompt_text` | string | yes | **Exact transcript** of that sample (text mẫu) |
+| `name` | string | no | Display label, e.g. `narrator-vi` |
+
+```json
+{
+  "id": "a1b2c3d4e5f6",
+  "name": "narrator-vi",
+  "prompt_text": "Xin chào, đây là mẫu giọng.",
+  "created_at": "2026-08-19T14:32:00+00:00"
+}
+```
+
+Keep `id`. Later requests only send this id.
+
+#### `GET /v1/voices`
+
+```json
+{ "voices": [ { "id": "a1b2c3d4e5f6", "name": "narrator-vi", "prompt_text": "...", "created_at": "..." } ] }
+```
+
+#### `GET /v1/voices/{voice_id}`
+
+Same object as create. **404** if missing.
+
+#### `DELETE /v1/voices/{voice_id}`
+
+```json
+{ "ok": true, "id": "a1b2c3d4e5f6" }
+```
+
 ### `POST /v1/tts`
 
 JSON body. Response: `audio/wav`.
@@ -69,8 +113,20 @@ JSON body. Response: `audio/wav`.
 | `cfg_value` | number | no | server `2.0` | Guidance scale. Typical 1.5–3.0 |
 | `inference_timesteps` | integer | no | server `10` | Higher = slower, slightly better. Keep 10 on RTX 3070 |
 | `seed` | integer | no | random | Same seed + same text ≈ same voice/prosody |
+| `voice_id` | string | no | omitted | 12-hex id from `POST /v1/voices`. Reuses sample audio + `prompt_text` |
 
-Voice design example:
+Saved-voice TTS:
+
+```json
+{
+  "text": "Đoạn này đọc bằng giọng đã lưu.",
+  "voice_id": "a1b2c3d4e5f6"
+}
+```
+
+You may still prefix `text` with `(style)` for controllable cloning on a saved voice.
+
+Voice design (no sample, no `voice_id`):
 
 ```json
 {
@@ -122,7 +178,8 @@ Validation errors (422) use FastAPI’s array `detail` (loc/msg/type). Treat 422
 
 | Code | When |
 |------|------|
-| 400 | Clone `text` empty/whitespace |
+| 400 | Clone/voice `text` or `prompt_text` empty; invalid `voice_id` format |
+| 404 | Unknown `voice_id` |
 | 422 | JSON schema fail (`text` missing) |
 | 503 | GPU lock timeout |
 | 500 | Inference/OOM; `detail` is the exception string |
@@ -133,6 +190,18 @@ Validation errors (422) use FastAPI’s array `detail` (loc/msg/type). Treat 422
 
 ```bash
 curl -s http://127.0.0.1:8000/health
+
+# Register a reusable voice (no GPU)
+curl -s -X POST http://127.0.0.1:8000/v1/voices \
+  -F "name=narrator-vi" \
+  -F "prompt_text=Xin chào, đây là mẫu giọng." \
+  -F "reference_audio=@speaker.wav"
+
+# Later: TTS with voice_id only
+curl -s -X POST http://127.0.0.1:8000/v1/tts \
+  -H "Content-Type: application/json" \
+  -d "{\"text\":\"Đọc đoạn này bằng giọng đã lưu.\",\"voice_id\":\"a1b2c3d4e5f6\"}" \
+  --output out_voice.wav
 
 curl -s -X POST http://127.0.0.1:8000/v1/tts \
   -H "Content-Type: application/json" \
@@ -203,7 +272,7 @@ await fs.writeFile("out.wav", Buffer.from(await res.arrayBuffer()));
 
 ## What this API is not
 
-- Not OpenAI-compatible (`/v1/audio/speech`, `model`, `voice`, `speed` are unused).
+- Not OpenAI-compatible (`/v1/audio/speech`, `model`, `voice`, `speed` are unused). Use `voice_id` from `/v1/voices`, not OpenAI voice names.
 - No WebSocket, no SSE JSON chunks, no timestamps endpoint.
 - No multi-speaker batch in one request.
 - No public TLS; bind is loopback unless the operator changes `HOST`.

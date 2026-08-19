@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     inference_timesteps: int = 10
     gpu_lock_timeout: float = 180
     max_sentence_chars: int = 400
+    voices_dir: str = "voices"
 
 
 settings = Settings()

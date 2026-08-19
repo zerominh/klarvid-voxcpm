@@ -13,6 +13,21 @@ class TtsRequest(BaseModel):
         default=None, description="Diffusion steps. Server default 10."
     )
     seed: int | None = Field(default=None, description="Optional reproducibility seed.")
+    voice_id: str | None = Field(
+        default=None,
+        description="Saved voice from POST /v1/voices. Uses stored sample audio + prompt_text.",
+    )
+
+
+class VoiceResponse(BaseModel):
+    id: str
+    name: str | None
+    prompt_text: str
+    created_at: str
+
+
+class VoiceListResponse(BaseModel):
+    voices: list[VoiceResponse]
 
 
 class HealthResponse(BaseModel):

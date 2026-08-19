@@ -48,9 +48,11 @@ Contract cho client và AI: [docs/api.md](docs/api.md) · spec [docs/openapi.yam
 Khi server chạy: `http://127.0.0.1:8000/docs` và `/openapi.json`.
 
 - `GET /health`
-- `POST /v1/tts` JSON `{ "text": "..." }` → WAV 48 kHz
+- `POST /v1/voices` — lưu giọng (audio mẫu + text mẫu) → `id`
+- `GET /v1/voices` · `GET /v1/voices/{id}` · `DELETE /v1/voices/{id}`
+- `POST /v1/tts` JSON `{ "text": "...", "voice_id": "..." }` → WAV 48 kHz
 - `POST /v1/tts/stream`
-- `POST /v1/clone` multipart `text` + `reference_audio`
+- `POST /v1/clone` — clone một lần, phải upload file
 - `POST /v1/clone/stream`
 
 Voice design: `(giọng nữ trẻ, ấm)Xin chào`.

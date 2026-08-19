@@ -15,6 +15,7 @@ tags:
   - name: system
   - name: tts
   - name: clone
+  - name: voices
 paths:
   /health:
     get:
@@ -28,6 +29,97 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthResponse"
+  /v1/voices:
+    post:
+      tags: [voices]
+      operationId: createVoice
+      summary: Register a reusable cloned voice
+      description: Saves sample audio + transcript. Does not use the GPU. Returns voice_id.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [prompt_text, reference_audio]
+              properties:
+                prompt_text:
+                  type: string
+                  description: Exact transcript of the sample audio
+                reference_audio:
+                  type: string
+                  format: binary
+                name:
+                  type: string
+      responses:
+        "201":
+          description: Voice stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VoiceResponse"
+        "400":
+          description: Empty prompt_text or empty file
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+    get:
+      tags: [voices]
+      operationId: listVoices
+      summary: List saved voices
+      responses:
+        "200":
+          description: Voice list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VoiceListResponse"
+  /v1/voices/{voice_id}:
+    parameters:
+      - name: voice_id
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: "^[a-f0-9]{12}$"
+    get:
+      tags: [voices]
+      operationId: getVoice
+      summary: Get one saved voice
+      responses:
+        "200":
+          description: Voice metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VoiceResponse"
+        "400":
+          description: Invalid id format
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "404":
+          $ref: "#/components/responses/VoiceNotFound"
+    delete:
+      tags: [voices]
+      operationId: deleteVoice
+      summary: Delete a saved voice
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  id:
+                    type: string
+        "404":
+          $ref: "#/components/responses/VoiceNotFound"
   /v1/tts:
     post:
       tags: [tts]
@@ -43,12 +135,10 @@ paths:
               vi:
                 value:
                   text: Xin chào, Klarvid.
-              voice_design:
+              voice_id:
                 value:
-                  text: "(giọng nữ trẻ, ấm)Xin chào, chào mừng bạn."
-                  cfg_value: 2.0
-                  inference_timesteps: 10
-                  seed: 42
+                  text: Đọc đoạn này bằng giọng đã lưu.
+                  voice_id: a1b2c3d4e5f6
       responses:
         "200":
           description: WAV audio
@@ -57,6 +147,8 @@ paths:
               schema:
                 type: string
                 format: binary
+        "404":
+          $ref: "#/components/responses/VoiceNotFound"
         "422":
           $ref: "#/components/responses/ValidationError"
         "503":
@@ -84,6 +176,8 @@ paths:
               schema:
                 type: string
                 format: binary
+        "404":
+          $ref: "#/components/responses/VoiceNotFound"
         "422":
           $ref: "#/components/responses/ValidationError"
         "503":
@@ -169,6 +263,33 @@ components:
         seed:
           type: integer
           nullable: true
+        voice_id:
+          type: string
+          nullable: true
+          description: 12-hex id from POST /v1/voices
+          pattern: "^[a-f0-9]{12}$"
+    VoiceResponse:
+      type: object
+      required: [id, prompt_text, created_at]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+          nullable: true
+        prompt_text:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    VoiceListResponse:
+      type: object
+      required: [voices]
+      properties:
+        voices:
+          type: array
+          items:
+            $ref: "#/components/schemas/VoiceResponse"
     CloneForm:
       type: object
       required: [text, reference_audio]
@@ -240,6 +361,14 @@ components:
             $ref: "#/components/schemas/ErrorDetail"
           example:
             detail: GPU bận, thử lại sau.
+    VoiceNotFound:
+      description: voice_id does not exist
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorDetail"
+          example:
+            detail: voice_id không tồn tại
     ServerError:
       description: Inference failure or CUDA OOM
       content:
