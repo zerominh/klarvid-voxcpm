@@ -2,14 +2,38 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import logging
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
-from typing import Any, AsyncIterator
+from typing import Any, AsyncIterator, Mapping
 
 import numpy as np
 
 from app.audio import float_to_pcm16, split_text
 from app.config import Settings
+
+logger = logging.getLogger(__name__)
+
+
+class GPUBusyError(Exception):
+    pass
+
+
+def _unwrap_generate(method) -> Any:
+    """VoxCPM.generate is `def generate(*args, **kwargs)` wrapping `_generate`.
+
+    inspect.signature(generate) has no named clone params, so callers that
+    filter by parameter names would silently drop reference_wav_path / seed.
+    """
+    inst = getattr(method, "__self__", None)
+    inner = getattr(inst, "_generate", None) if inst is not None else None
+    return inner if callable(inner) else method
+
+
+def _accepts(params: Mapping[str, inspect.Parameter], name: str) -> bool:
+    if name in params:
+        return True
+    return any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values())
 
 
 class GPUBusyError(Exception):
@@ -105,7 +129,7 @@ class TtsEngine:
         denoise: bool,
         method,
     ) -> dict[str, Any]:
-        params = inspect.signature(method).parameters
+        params = inspect.signature(_unwrap_generate(method)).parameters
         kwargs: dict[str, Any] = {
             "cfg_value": cfg_value if cfg_value is not None else self.settings.cfg_value,
             "inference_timesteps": (
@@ -114,16 +138,28 @@ class TtsEngine:
                 else self.settings.inference_timesteps
             ),
         }
-        if "seed" in params and seed is not None:
+        if seed is not None and _accepts(params, "seed"):
             kwargs["seed"] = seed
-        if reference_wav_path and "reference_wav_path" in params:
+        if reference_wav_path and _accepts(params, "reference_wav_path"):
             kwargs["reference_wav_path"] = reference_wav_path
-        if prompt_wav_path and "prompt_wav_path" in params:
+        if prompt_wav_path and _accepts(params, "prompt_wav_path"):
             kwargs["prompt_wav_path"] = prompt_wav_path
-        if prompt_text and "prompt_text" in params:
+        if prompt_text and _accepts(params, "prompt_text"):
             kwargs["prompt_text"] = prompt_text
-        if "denoise" in params:
+        if _accepts(params, "denoise"):
             kwargs["denoise"] = bool(denoise and self.settings.voxcpm_load_denoiser)
+        if reference_wav_path and "reference_wav_path" not in kwargs:
+            raise RuntimeError(
+                "Không truyền được reference_wav_path vào VoxCPM.generate — clone bị bỏ silent."
+            )
+        if seed is not None and "seed" not in kwargs:
+            raise RuntimeError("Không truyền được seed vào VoxCPM.generate.")
+        logger.info(
+            "voxcpm generate clone=%s seed=%s keys=%s",
+            bool(kwargs.get("reference_wav_path")),
+            kwargs.get("seed"),
+            sorted(kwargs),
+        )
         return kwargs
 
     def _generate_sync(
