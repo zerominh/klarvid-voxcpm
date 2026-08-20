@@ -1,4 +1,8 @@
-# Bước 0–2: Chuẩn bị máy Windows
+# Cài lần đầu trên Windows
+
+Làm **một lần** theo thứ tự bước 0 → 3. Các lần sau chỉ cần [chạy server](03-api-va-kiem-tra.md).
+
+Repo ví dụ: `D:\minh\mydata\klarvid-voxcpm` (đổi `cd` cho đúng máy).
 
 ## Bước 0 — Điều kiện máy
 
@@ -15,7 +19,7 @@ py -3.11 --version
 ffmpeg -version
 ```
 
-`nvidia-smi` phải hiện **RTX 3070**, Memory ~8192 MiB.
+`nvidia-smi` phải hiện **RTX 3070**, Memory ~8192 MiB, cột CUDA Version ≥ 12.x. Nếu đã có ~1 GB VRAM bị Chrome/VS Code chiếm, tắt bớt trước khi load model.
 
 Cài FFmpeg nếu thiếu:
 
@@ -25,26 +29,50 @@ winget install Gyan.FFmpeg
 
 Đóng/mở lại terminal rồi kiểm `ffmpeg -version`.
 
+### Cho phép chạy script PowerShell
+
+Windows mặc định chặn `.ps1`. Lỗi:
+
+`cannot be loaded because running scripts is disabled on this system`
+
+Sửa **một lần** cho user hiện tại (gõ `Y` nếu hỏi):
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+```
+
+Không muốn đổi policy thì mỗi lần start:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\start.ps1
+```
+
 ## Bước 1 — Venv và dependency
 
 ```powershell
-cd D:\ai\klarvid-voxcpm
+cd D:\minh\mydata\klarvid-voxcpm
 py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -U pip
 pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu124
 pip install -r requirements.txt
+copy .env.example .env
 ```
 
-Nếu `requirements.txt` chưa ghim torch CUDA, cài torch **trước** rồi mới `pip install -r requirements.txt`.
+Cài `torch` CUDA **trước** `requirements.txt`. Prompt có `(.venv)` là đã activate.
 
-Kiểm CUDA:
+Kiểm CUDA trong venv:
 
 ```powershell
-python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
+python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0) if torch.cuda.is_available() else None); print(torch.__version__, torch.version.cuda)"
 ```
 
-Kỳ vọng: `True NVIDIA GeForce RTX 3070`. Nếu `False`: đang dùng wheel CPU — gỡ torch rồi cài lại cu124.
+Kỳ vọng: `True NVIDIA GeForce RTX 3070`. Nếu `False`:
+
+```powershell
+pip uninstall -y torch torchaudio
+pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu124
+```
 
 ## Bước 2 — Tải model và smoke infer
 
@@ -52,9 +80,37 @@ Kỳ vọng: `True NVIDIA GeForce RTX 3070`. Nếu `False`: đang dùng wheel CP
 # Hugging Face chậm:
 $env:HF_ENDPOINT = "https://hf-mirror.com"
 
-python -c "from huggingface_hub import snapshot_download; snapshot_download('openbmb/VoxCPM2'); print('ok')"
 python .\scripts\smoke_load.py
 ```
 
-**Pass:** `vi_demo.wav` nghe được, peak VRAM **< 7.5 GB**.  
-**Fail OOM:** giữ `optimize=False`, `load_denoiser=False`; đóng app GPU khác.
+Lệnh này **không** mở API. Nó tải VoxCPM2 (~5 GB lần đầu), generate 1 câu tiếng Việt, ghi `vi_demo.wav` ở gốc repo.
+
+**Pass:** nghe được `vi_demo.wav`, peak VRAM **< 7.5 GB**.  
+**Fail OOM:** đóng Chrome/app GPU khác; giữ `optimize=False`, `load_denoiser=False`.
+
+## Bước 3 — Khởi động server (lần đầu và các lần sau)
+
+```powershell
+cd D:\minh\mydata\klarvid-voxcpm
+.\scripts\start.ps1
+```
+
+Hoặc không dùng script (venv đã activate):
+
+```powershell
+$env:PYTORCH_CUDA_ALLOC_CONF = "expandable_segments:True"
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1
+```
+
+Chỉ `--workers 1`. Không `--reload`. Lần đầu sau cài: load model + warmup vài phút.
+
+Thành công khi log có `Uvicorn running on http://127.0.0.1:8000`.
+
+Cửa sổ khác:
+
+```powershell
+curl.exe http://127.0.0.1:8000/health
+start http://127.0.0.1:8000/docs
+```
+
+Tắt server: `Ctrl+C` ở cửa sổ `start.ps1`.

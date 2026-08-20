@@ -31,10 +31,14 @@ GPU bận: request sau chờ lock tối đa 180s rồi 503.
 
 ## Chạy server
 
+Nếu lỗi `running scripts is disabled`: xem [01-setup-windows.md](01-setup-windows.md) (Execution Policy).
+
 ```powershell
-cd D:\ai\klarvid-voxcpm
+cd D:\minh\mydata\klarvid-voxcpm
 .\scripts\start.ps1
 ```
+
+Cách khác: `powershell -ExecutionPolicy Bypass -File .\scripts\start.ps1`
 
 Log kỳ vọng: load model, warmup, `Uvicorn running on http://127.0.0.1:8000`.
 
@@ -63,5 +67,6 @@ Hai cửa sổ gọi TTS cùng lúc: request 2 chờ hoặc 503; **không** cras
 | torchcodec / clone fail | FFmpeg trong PATH; engine ép backend `soundfile` |
 | `torch.cuda.is_available() == False` | cài lại `torch` cu124, không dùng wheel CPU |
 | Crash khi 2 process | chỉ `--workers 1`, tắt `--reload` |
+| `running scripts is disabled` | `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` |
 
 RTF ước lượng trên 3070 với `optimize=False`: **0.6–1.0** (đo sau lần chạy đầu, ghi vào README).

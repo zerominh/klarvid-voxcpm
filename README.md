@@ -11,27 +11,36 @@ Chi tiết từng bước: [docs/README.md](docs/README.md).
 - FFmpeg trong PATH
 - PyTorch CUDA 12.x
 
-## Cài
+## Cài (lần đầu)
+
+Chi tiết: [docs/01-setup-windows.md](docs/01-setup-windows.md).
 
 ```powershell
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+cd D:\minh\mydata\klarvid-voxcpm
 py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -U pip
 pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu124
 pip install -r requirements.txt
 copy .env.example .env
-```
-
-Smoke model (lần đầu tải ~5 GB):
-
-```powershell
 python .\scripts\smoke_load.py
 ```
+
+`smoke_load.py` lần đầu tải model ~5 GB, ghi `vi_demo.wav`.
 
 ## Chạy
 
 ```powershell
 .\scripts\start.ps1
+```
+
+Nếu lỗi `running scripts is disabled`:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+# hoặc:
+powershell -ExecutionPolicy Bypass -File .\scripts\start.ps1
 ```
 
 Chỉ `--workers 1`. Không `--reload`.
