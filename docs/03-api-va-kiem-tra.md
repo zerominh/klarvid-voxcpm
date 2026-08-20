@@ -62,7 +62,7 @@ Hai cửa sổ gọi TTS cùng lúc: request 2 chờ hoặc 503; **không** cras
 
 | Triệu chứng | Cách xử lý |
 |-------------|------------|
-| TTS `voice_id` nhưng mỗi câu một giọng, không giống clone | `VoxCPM.generate(*args, **kwargs)` làm `inspect.signature` bỏ `reference_wav_path`/`seed`. Sửa `app/engine.py` (`_unwrap_generate`). **Restart server**. Log phải có `clone=True seed=42`. Xóa wav cũ, TTS `--overwrite` |
+| TTS 500 `Không truyền được seed` | PyPI `voxcpm==2.0.3` không có kwarg `seed`. Đã bỏ hard-fail; copy `engine.py` mới, restart. Clone vẫn chạy qua `reference_wav_path` |
 | Triton / `Python int too large` | giữ `VOXCPM_OPTIMIZE=false` |
 | torchcodec / clone fail | FFmpeg trong PATH; engine ép backend `soundfile` |
 | `torch.cuda.is_available() == False` | cài lại `torch` cu124, không dùng wheel CPU |

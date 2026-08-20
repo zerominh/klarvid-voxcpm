@@ -15,10 +15,6 @@ from app.config import Settings
 logger = logging.getLogger(__name__)
 
 
-class GPUBusyError(Exception):
-    pass
-
-
 def _unwrap_generate(method) -> Any:
     """VoxCPM.generate is `def generate(*args, **kwargs)` wrapping `_generate`.
 
@@ -28,6 +24,14 @@ def _unwrap_generate(method) -> Any:
     inst = getattr(method, "__self__", None)
     inner = getattr(inst, "_generate", None) if inst is not None else None
     return inner if callable(inner) else method
+
+
+def _apply_torch_seed(seed: int) -> None:
+    import torch
+
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
 
 
 def _accepts(params: Mapping[str, inspect.Parameter], name: str) -> bool:
@@ -152,10 +156,10 @@ class TtsEngine:
             raise RuntimeError(
                 "Không truyền được reference_wav_path vào VoxCPM.generate — clone bị bỏ silent."
             )
-        if seed is not None and "seed" not in kwargs:
-            raise RuntimeError("Không truyền được seed vào VoxCPM.generate.")
+        # PyPI voxcpm==2.0.3: _generate không có seed. Đừng raise, đừng forward
+        # (forward sẽ TypeError unexpected keyword). Caller dùng torch.manual_seed.
         logger.info(
-            "voxcpm generate clone=%s seed=%s keys=%s",
+            "voxcpm generate clone=%s seed_kw=%s keys=%s",
             bool(kwargs.get("reference_wav_path")),
             kwargs.get("seed"),
             sorted(kwargs),
@@ -186,6 +190,8 @@ class TtsEngine:
         )
         pieces: list[np.ndarray] = []
         for sentence in split_text(text, self.settings.max_sentence_chars):
+            if seed is not None and "seed" not in kwargs:
+                _apply_torch_seed(seed)
             wav = self.model.generate(text=sentence, **kwargs)
             pieces.append(np.asarray(wav, dtype=np.float32).reshape(-1))
         if not pieces:
@@ -218,6 +224,8 @@ class TtsEngine:
         )
         try:
             for sentence in split_text(text, self.settings.max_sentence_chars):
+                if seed is not None and "seed" not in kwargs:
+                    _apply_torch_seed(seed)
                 for chunk in self.model.generate_streaming(text=sentence, **kwargs):
                     pcm = float_to_pcm16(np.asarray(chunk, dtype=np.float32))
                     asyncio.run_coroutine_threadsafe(queue.put(pcm), loop).result()
