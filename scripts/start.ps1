@@ -19,7 +19,8 @@ if (Test-Path .env) {
 }
 
 if (-not $env:HOST) { $env:HOST = "127.0.0.1" }
-if (-not $env:PORT) { $env:PORT = "8000" }
+# 8001: tránh đụng ai-resolver đang bind 8000
+if (-not $env:PORT) { $env:PORT = "8001" }
 $env:PYTORCH_CUDA_ALLOC_CONF = "expandable_segments:True"
 
 Write-Host "Starting Klarvid VoxCPM on http://$($env:HOST):$($env:PORT) (workers=1)"

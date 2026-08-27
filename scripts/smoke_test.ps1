@@ -1,6 +1,17 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
-$base = "http://127.0.0.1:8000"
+
+Set-Location (Split-Path $PSScriptRoot -Parent)
+if (Test-Path .env) {
+    Get-Content .env | ForEach-Object {
+        $line = $_.Trim()
+        if ($line -eq "" -or $line.StartsWith("#") -or $line -notmatch "=") { return }
+        $parts = $line.Split("=", 2)
+        Set-Item -Path ("Env:" + $parts[0].Trim()) -Value $parts[1].Trim()
+    }
+}
+$port = if ($env:PORT) { $env:PORT } else { "8001" }
+$base = "http://127.0.0.1:$port"
 
 Write-Host "GET /health"
 curl.exe -s "$base/health"

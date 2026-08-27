@@ -99,18 +99,18 @@ Hoặc không dùng script (venv đã activate):
 
 ```powershell
 $env:PYTORCH_CUDA_ALLOC_CONF = "expandable_segments:True"
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8001 --workers 1
 ```
 
 Chỉ `--workers 1`. Không `--reload`. Lần đầu sau cài: load model + warmup vài phút.
 
-Thành công khi log có `Uvicorn running on http://127.0.0.1:8000`.
+Thành công khi log có `Uvicorn running on http://127.0.0.1:8001`.
 
 Cửa sổ khác:
 
 ```powershell
-curl.exe http://127.0.0.1:8000/health
-start http://127.0.0.1:8000/docs
+curl.exe http://127.0.0.1:8001/health
+start http://127.0.0.1:8001/docs
 ```
 
 Tắt server: `Ctrl+C` ở cửa sổ `start.ps1`.

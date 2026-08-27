@@ -40,7 +40,7 @@ cd D:\minh\mydata\klarvid-voxcpm
 
 Cách khác: `powershell -ExecutionPolicy Bypass -File .\scripts\start.ps1`
 
-Log kỳ vọng: load model, warmup, `Uvicorn running on http://127.0.0.1:8000`.
+Log kỳ vọng: load model, warmup, `Uvicorn running on http://127.0.0.1:8001`.
 
 ## Smoke
 

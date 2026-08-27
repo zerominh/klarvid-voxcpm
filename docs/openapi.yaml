@@ -9,7 +9,7 @@ info:
   contact:
     name: Klarvid
 servers:
-  - url: http://127.0.0.1:8000
+  - url: http://127.0.0.1:8001
     description: Default Windows bind
 tags:
   - name: system

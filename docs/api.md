@@ -1,12 +1,12 @@
 # Klarvid VoxCPM TTS — API integration
 
-Machine-readable spec: [openapi.yaml](openapi.yaml). Live docs when the server is up: `http://127.0.0.1:8000/docs` and `http://127.0.0.1:8000/openapi.json`.
+Machine-readable spec: [openapi.yaml](openapi.yaml). Live docs when the server is up: `http://127.0.0.1:8001/docs` and `http://127.0.0.1:8001/openapi.json`.
 
 This document is the contract for clients and coding agents. Follow it exactly. Do not assume OpenAI `/v1/audio/speech` compatibility.
 
 ## Agent rules
 
-1. Base URL default: `http://127.0.0.1:8000`. No auth, no API key.
+1. Base URL default: `http://127.0.0.1:8001`. No auth, no API key.
 2. One GPU: at most one synthesis runs at a time. If busy, wait then retry on **503**.
 3. TTS/clone success bodies are **raw WAV bytes**, not JSON, not base64. `/health` and `/v1/voices*` are JSON.
 4. Audio: **PCM16 little-endian, mono, 48 kHz** (`sample_rate` from `/health` if unsure).
@@ -189,32 +189,32 @@ Validation errors (422) use FastAPI’s array `detail` (loc/msg/type). Treat 422
 ### curl
 
 ```bash
-curl -s http://127.0.0.1:8000/health
+curl -s http://127.0.0.1:8001/health
 
 # Register a reusable voice (no GPU)
-curl -s -X POST http://127.0.0.1:8000/v1/voices \
+curl -s -X POST http://127.0.0.1:8001/v1/voices \
   -F "name=narrator-vi" \
   -F "prompt_text=Xin chào, đây là mẫu giọng." \
   -F "reference_audio=@speaker.wav"
 
 # Later: TTS with voice_id only
-curl -s -X POST http://127.0.0.1:8000/v1/tts \
+curl -s -X POST http://127.0.0.1:8001/v1/tts \
   -H "Content-Type: application/json" \
   -d "{\"text\":\"Đọc đoạn này bằng giọng đã lưu.\",\"voice_id\":\"a1b2c3d4e5f6\"}" \
   --output out_voice.wav
 
-curl -s -X POST http://127.0.0.1:8000/v1/tts \
+curl -s -X POST http://127.0.0.1:8001/v1/tts \
   -H "Content-Type: application/json" \
   -d "{\"text\":\"Xin chào, Klarvid.\"}" \
   --output out.wav
 
-curl -s -X POST http://127.0.0.1:8000/v1/clone \
+curl -s -X POST http://127.0.0.1:8001/v1/clone \
   -F "text=Đây là giọng nhân bản." \
   -F "reference_audio=@speaker.wav" \
   --output clone.wav
 
 # Ultimate clone
-curl -s -X POST http://127.0.0.1:8000/v1/clone \
+curl -s -X POST http://127.0.0.1:8001/v1/clone \
   -F "text=Nối tiếp giọng này." \
   -F "prompt_text=Lời thoại đúng của file mẫu." \
   -F "reference_audio=@speaker.wav" \
@@ -229,7 +229,7 @@ import time
 import urllib.error
 import urllib.request
 
-BASE = "http://127.0.0.1:8000"
+BASE = "http://127.0.0.1:8001"
 
 
 def tts(text: str, path: str = "out.wav", retries: int = 4) -> None:
@@ -260,7 +260,7 @@ tts("Xin chào, Klarvid.")
 ```javascript
 import fs from "node:fs/promises";
 
-const res = await fetch("http://127.0.0.1:8000/v1/tts", {
+const res = await fetch("http://127.0.0.1:8001/v1/tts", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({ text: "Xin chào, Klarvid." }),

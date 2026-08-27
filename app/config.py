@@ -10,7 +10,8 @@ class Settings(BaseSettings):
     )
 
     host: str = "127.0.0.1"
-    port: int = 8000
+    # 8001: không đụng ai-resolver (API_PORT=8000)
+    port: int = 8001
     voxcpm_model: str = "openbmb/VoxCPM2"
     voxcpm_device: str = "cuda"
     voxcpm_optimize: bool = False

@@ -1,6 +1,6 @@
 # Runbook phương án A — VoxCPM2 trên Windows
 
-TTS server FastAPI cho Klarvid, chạy local trên **RTX 3070 8 GB**. Một process, một GPU lock, bind mặc định `127.0.0.1:8000`.
+TTS server FastAPI cho Klarvid, chạy local trên **RTX 3070 8 GB**. Một process, một GPU lock, bind mặc định `127.0.0.1:8001` (ai-resolver giữ `8000`).
 
 ## Thứ tự đọc
 

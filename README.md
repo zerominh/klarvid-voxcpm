@@ -1,6 +1,6 @@
 # Klarvid VoxCPM TTS (Windows, RTX 3070)
 
-Server FastAPI phương án A: **VoxCPM2** text-to-speech, 1 worker, bind `127.0.0.1:8000`.
+Server FastAPI phương án A: **VoxCPM2** text-to-speech, 1 worker, bind `127.0.0.1:8001` (không dùng 8000 — port đó của **ai-resolver**).
 
 Chi tiết từng bước: [docs/README.md](docs/README.md).
 
@@ -54,7 +54,7 @@ Chỉ `--workers 1`. Không `--reload`.
 
 Contract cho client và AI: [docs/api.md](docs/api.md) · spec [docs/openapi.yaml](docs/openapi.yaml).
 
-Khi server chạy: `http://127.0.0.1:8000/docs` và `/openapi.json`.
+Khi server chạy: `http://127.0.0.1:8001/docs` và `/openapi.json`.
 
 - `GET /health`
 - `POST /v1/voices` — lưu giọng (audio mẫu + text mẫu) → `id`
